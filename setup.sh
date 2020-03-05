@@ -21,7 +21,6 @@ echo "Generate userdata ..."
 eksctl get cluster --region us-west-2 --name bottlerocket -o json \
 | xq --json '[0].with{"[settings.kubernetes]\napi-server=\"${Endpoint}\"\ncluster-certificate=\"${CertificateAuthority.Data}\"\ncluster-name=\"bottlerocket\""}' -o raw > userdata.toml
 
-
 echo "Obtain a private subnet ..."
 aws ec2 describe-subnets \
    --subnet-ids $(eksctl get cluster --region us-west-2 --name bottlerocket -o json | xq --json '.ResourcesVpcConfig.SubnetIds.flatten().join(" ")' -o raw) \
@@ -65,10 +64,12 @@ aws ec2 run-instances --key-name chanwit \
    --user-data file://userdata.toml \
    --iam-instance-profile Name=$(cat INSTANCE_PROFILE_NAME) | xq --json '.Instances[0].InstanceId' -o raw > INSTANCE_ID
 
+echo "Waiting for Bottlerocket to be running ..."
 aws ec2 wait instance-running \
     --instance-ids $(cat INSTANCE_ID)
 
 EKSCTL_EXPERIMENTAL=true eksctl enable repo --cluster=bottlerocket \
+  --timeout=200s \
   --region=us-west-2 \
   --git-url=$(git remote get-url --push origin) \
   --git-email=noreploy+flux@weave.works
