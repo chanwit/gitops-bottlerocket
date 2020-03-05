@@ -1,10 +1,10 @@
 echo "Download xq processor ..."
 mkdir -p ~/.local/bin || true
 
-FILE="~/.local/bin/xq"
+FILE="$HOME/.local/bin/xq"
 if [ ! -f "$FILE" ]; then
-  wget -O ~/.local/bin/xq  https://github.com/chanwit/xq/releases/download/v0.1.0/xq
-  chmod +x ~/.local/bin/xq
+  wget -O $FILE https://github.com/chanwit/xq/releases/download/v0.1.0/xq
+  chmod +x $FILE
 fi
 
 ~/.local/bin/xq -V
@@ -12,7 +12,7 @@ kubectl version
 aws --version
 
 echo "Creating EKS control plane ..."
-eksctl create cluster --region us-west-2 --nodes=1 --name bottlerocket --node-ami=auto
+eksctl create cluster --region us-west-2 --nodes=0 --name bottlerocket --node-ami=auto
 
 echo "Applying AWS CNI ..."
 kubectl apply -f aws-k8s-cni.yaml
@@ -21,11 +21,14 @@ echo "Generate userdata ..."
 eksctl get cluster --region us-west-2 --name bottlerocket -o json \
 | xq --json '[0].with{"[settings.kubernetes]\napi-server=\"${Endpoint}\"\ncluster-certificate=\"${CertificateAuthority.Data}\"\ncluster-name=\"bottlerocket\""}' -o raw > userdata.toml
 
+
+echo "Obtain a private subnet ..."
 aws ec2 describe-subnets \
    --subnet-ids $(eksctl get cluster --region us-west-2 --name bottlerocket -o json | xq --json '.ResourcesVpcConfig.SubnetIds.flatten().join(" ")' -o raw) \
    --region us-west-2 \
    --query "Subnets[].[SubnetId, Tags[?Key=='aws:cloudformation:logical-id'].Value]" \
-| xq --json '[0][0]' -o raw > SUBNET_ID
+| xq --json '.flatten()' \
+| xq --json '[x.findIndexOf{it.contains("Private")}-1]' -o raw > SUBNET_ID
 
 echo "Get Instance Role Name ..."
 eksctl get iamidentitymapping --region us-west-2 --cluster bottlerocket -o json \
@@ -65,9 +68,7 @@ aws ec2 run-instances --key-name chanwit \
 aws ec2 wait instance-running \
     --instance-ids $(cat INSTANCE_ID)
 
-REPO=$(git remote get-url --push origin)
-
 EKSCTL_EXPERIMENTAL=true eksctl enable repo --cluster=bottlerocket \
   --region=us-west-2 \
-  --git-url=$REPO \
+  --git-url=$(git remote get-url --push origin) \
   --git-email=noreploy+flux@weave.works
