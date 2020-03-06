@@ -1,13 +1,33 @@
+#!/usr/bin/env bash
+
+KEY_NAME=$1
+if [ -z "$KEY_NAME" ]; then
+  echo "Please specify an Key Pair for Bottlerocket instances."
+  exit 1
+fi
+
+case "$(uname -s)" in
+  Linux)
+      _ostype=linux
+      ;;
+  Darwin)
+      _ostype=darwin
+      ;;
+  *)
+      err "Unknown OS type: $_ostype"
+      ;;
+esac
+
 echo "Download xq processor ..."
 mkdir -p ~/.local/bin || true
 
-FILE="$HOME/.local/bin/xq"
-if [ ! -f "$FILE" ]; then
-  wget -O $FILE https://github.com/chanwit/xq/releases/download/v0.1.0/xq
-  chmod +x $FILE
+XQ="$HOME/.local/bin/xq"
+if [ ! -f "$XQ" ]; then
+  wget -O $XQ https://github.com/chanwit/xq/releases/download/v0.1.0/xq-${_ostype}
+  chmod +x $XQ
 fi
 
-~/.local/bin/xq -V
+$XQ -V
 kubectl version
 aws --version
 
@@ -27,7 +47,7 @@ aws ec2 describe-subnets \
    --region us-west-2 \
    --query "Subnets[].[SubnetId, Tags[?Key=='aws:cloudformation:logical-id'].Value]" \
 | xq --json '.flatten()' \
-| xq --json '[x.findIndexOf{it.contains("Private")}-1]' -o raw > SUBNET_ID
+| xq --json '[x.findIndexOf{it =~ /Private.*[AB]$/}-1]' -o raw > SUBNET_ID
 
 echo "Get Instance Role Name ..."
 eksctl get iamidentitymapping --region us-west-2 --cluster bottlerocket -o json \
@@ -54,7 +74,7 @@ aws ec2 describe-security-groups --filters 'Name=tag:Name,Values=*bottlerocket*'
 | xq --json '.findAll{ it.Name.contains("nodegroup-ng") || it.Name.contains("ClusterSharedNodeSecurityGroup")}.ID.join(" ")' -o raw > SECURITY_GROUP_IDS
 
 echo "Starting Bottlerocket node ..."
-aws ec2 run-instances --key-name chanwit \
+aws ec2 run-instances --key-name $KEY_NAME \
    --subnet-id $(cat SUBNET_ID) \
    --security-group-ids $(cat SECURITY_GROUP_IDS) \
    --image-id ami-0ba66967c5a0a704a \
