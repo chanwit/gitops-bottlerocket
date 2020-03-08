@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
 
-KEY_NAME=$1
-if [ -z "$KEY_NAME" ]; then
-  echo "Please specify an Key Pair for Bottlerocket instances."
-  exit 1
-fi
-
 case "$(uname -s)" in
   Linux)
       _ostype=linux
@@ -27,9 +21,14 @@ if [ ! -f "$XQ" ]; then
   chmod +x $XQ
 fi
 
-$XQ -V
+xq() {
+  $XQ "${@}"
+}
+
+xq -V
 kubectl version
 aws --version
+
 
 echo "Creating EKS control plane ..."
 eksctl create cluster --region us-west-2 --nodes=0 --name bottlerocket --node-ami=auto
@@ -74,7 +73,7 @@ aws ec2 describe-security-groups --filters 'Name=tag:Name,Values=*bottlerocket*'
 | xq --json '.findAll{ it.Name.contains("nodegroup-ng") || it.Name.contains("ClusterSharedNodeSecurityGroup")}.ID.join(" ")' -o raw > SECURITY_GROUP_IDS
 
 echo "Starting Bottlerocket node ..."
-aws ec2 run-instances --key-name $KEY_NAME \
+aws ec2 run-instances \
    --subnet-id $(cat SUBNET_ID) \
    --security-group-ids $(cat SECURITY_GROUP_IDS) \
    --image-id ami-0ba66967c5a0a704a \
