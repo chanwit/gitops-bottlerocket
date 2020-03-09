@@ -91,4 +91,4 @@ EKSCTL_EXPERIMENTAL=true eksctl enable repo --cluster=bottlerocket \
   --timeout=200s \
   --region=us-west-2 \
   --git-url=$(git remote get-url --push origin) \
-  --git-email=noreploy+flux@weave.works
+  --git-email=noreply+flux@weave.works
